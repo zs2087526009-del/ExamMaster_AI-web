@@ -1,0 +1,70 @@
+// ═══════════════════════════════════════
+// Celadon · 青瓷 — Scholarly Design Tokens
+// ═══════════════════════════════════════
+
+// ── Core Palette ──
+$ink:        #2c2416;   // 松烟墨 — primary text
+$ink-light:  #6b5f52;   // 淡墨 — secondary text
+$ink-muted:  #9b8e80;   // 枯墨 — muted / placeholder
+$paper:      #fcf9f2;   // 象牙纸 — page background
+$paper-dark: #f3eee3;   // 旧纸 — subtle surface variant
+$celadon:    #3d7a6a;   // 青瓷 — primary brand
+$celadon-deep: #2b5c4f; // 深青 — hover / active
+$celadon-pale: #eaf3ef; // 淡青 — subtle bg
+$cinnabar:   #c44536;   // 朱砂 — accent / danger / seal
+$cinnabar-pale: #fdf0ee; // 淡朱 — subtle accent bg
+$gold:       #b8944d;   // 泥金 — tertiary / highlight
+$stone:      #e3ddd2;   // 石纹 — borders, dividers
+
+// ── Surfaces ──
+$surface:       #fffdf9;  // card / elevated surface
+$surface-hover: #faf6ed;
+$chrome:        #3a3228;  // sidebar / nav chrome
+
+// ── Typography ──
+$font-display: 'Noto Serif SC', 'Source Han Serif SC', 'STSong', 'Songti SC', serif;
+$font-body:    'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', system-ui, sans-serif;
+$font-mono:    'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
+
+// ── Radii ──
+$radius-sm: 4px;
+$radius-md: 8px;
+$radius-lg: 14px;
+
+// ── Shadows (warm, not harsh) ──
+$shadow-card:  0 1px 3px rgba($ink, 0.06), 0 1px 2px rgba($ink, 0.04);
+$shadow-raised: 0 4px 16px rgba($ink, 0.08), 0 2px 4px rgba($ink, 0.04);
+$shadow-modal:  0 12px 40px rgba($ink, 0.12);
+
+// ── Element Plus overrides ──
+:root {
+  --el-color-primary:       #{$celadon};
+  --el-color-primary-light-3: #{lighten($celadon, 8%)};
+  --el-color-primary-light-5: #{lighten($celadon, 14%)};
+  --el-color-primary-light-7: #{lighten($celadon, 20%)};
+  --el-color-primary-light-8: #{$celadon-pale};
+  --el-color-primary-light-9: #{lighten($celadon, 28%)};
+  --el-color-primary-dark-2:  #{$celadon-deep};
+
+  --el-color-danger:  #{$cinnabar};
+  --el-color-warning: #d4933e;
+  --el-color-success: #5b8c5a;
+  --el-color-info:    #6b8a9e;
+
+  --el-border-color:       #{$stone};
+  --el-border-color-light: #{$stone};
+  --el-border-color-lighter: #{lighten($stone, 3%)};
+  --el-border-color-extra-light: #{lighten($stone, 6%)};
+
+  --el-bg-color:         #{$surface};
+  --el-bg-color-page:    #{$paper};
+  --el-bg-color-overlay: #{$surface};
+
+  --el-text-color-primary:   #{$ink};
+  --el-text-color-regular:   #{$ink-light};
+  --el-text-color-secondary: #{$ink-muted};
+  --el-text-color-placeholder: #{$ink-muted};
+
+  --el-font-size-base: 14px;
+  --el-border-radius-base: #{$radius-md};
+}

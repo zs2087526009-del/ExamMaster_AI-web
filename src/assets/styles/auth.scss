@@ -1,0 +1,198 @@
+@use 'variables.scss' as *;
+
+.auth-page {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+
+  .brand-panel {
+    flex: 1;
+    background: $chrome;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: rgba(#fff, 0.9);
+    padding: 64px 48px;
+    position: relative;
+    overflow: hidden;
+
+    // Subtle inner glow at center
+    &::before {
+      content: '';
+      position: absolute;
+      width: 500px;
+      height: 500px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba($celadon, 0.18) 0%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    // Decorative ink-wash circles
+    &::after {
+      content: '';
+      position: absolute;
+      width: 320px;
+      height: 320px;
+      border: 1px solid rgba(#fff, 0.06);
+      border-radius: 50%;
+      bottom: -60px;
+      right: -60px;
+      pointer-events: none;
+    }
+
+    .brand-icon {
+      width: 88px;
+      height: 88px;
+      border-radius: 50%;
+      background: rgba(#fff, 0.08);
+      border: 1px solid rgba(#fff, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: $celadon;
+      margin-bottom: 28px;
+      position: relative;
+      z-index: 1;
+      backdrop-filter: blur(4px);
+    }
+
+    .brand-name {
+      font-family: $font-display;
+      font-size: 34px;
+      font-weight: 600;
+      letter-spacing: 4px;
+      margin-bottom: 10px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .brand-tagline {
+      font-size: 15px;
+      opacity: 0.6;
+      margin-bottom: 40px;
+      font-family: $font-display;
+      letter-spacing: 2px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .brand-features {
+      list-style: none;
+      font-size: 14px;
+      opacity: 0.55;
+      line-height: 2.4;
+      position: relative;
+      z-index: 1;
+
+      li::before {
+        content: '';
+        display: inline-block;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: rgba(#fff, 0.4);
+        margin-right: 12px;
+        vertical-align: middle;
+        position: relative;
+        top: -1px;
+      }
+    }
+  }
+
+  .form-panel {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: $paper;
+
+    .form-wrapper {
+      width: 400px;
+
+      .form-title {
+        font-family: $font-display;
+        font-size: 28px;
+        font-weight: 600;
+        color: $ink;
+        margin-bottom: 6px;
+        letter-spacing: 2px;
+      }
+
+      .form-subtitle {
+        font-size: 14px;
+        color: $ink-muted;
+        margin-bottom: 36px;
+      }
+
+      .form-extra {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 22px;
+        font-size: 13px;
+
+        .forgot-link {
+          color: $ink-muted;
+          text-decoration: none;
+          transition: color 0.2s;
+          font-size: 13px;
+
+          &:hover { color: $celadon; }
+        }
+      }
+
+      .submit-btn {
+        width: 100%;
+        height: 46px;
+        font-size: 15px;
+        letter-spacing: 6px;
+        font-family: $font-display;
+        border-radius: $radius-md;
+        transition: all 0.25s;
+
+        &:not(:disabled):hover {
+          transform: translateY(-1px);
+        }
+      }
+
+      .form-footer {
+        text-align: center;
+        margin-top: 24px;
+        font-size: 13px;
+        color: $ink-muted;
+
+        a {
+          color: $celadon;
+          text-decoration: none;
+          font-weight: 500;
+          &:hover { color: $celadon-deep; }
+        }
+      }
+    }
+  }
+}
+
+// Responsive
+@media (max-width: 768px) {
+  .auth-page {
+    flex-direction: column;
+
+    .brand-panel {
+      flex: none;
+      padding: 28px 24px;
+
+      .brand-icon { width: 56px; height: 56px; margin-bottom: 12px; }
+      .brand-name { font-size: 22px; }
+      .brand-features { display: none; }
+    }
+
+    .form-panel {
+      flex: 1;
+      .form-wrapper { width: 100%; max-width: 360px; padding: 0 24px; }
+    }
+  }
+}
