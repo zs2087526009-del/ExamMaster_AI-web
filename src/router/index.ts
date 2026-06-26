@@ -93,6 +93,14 @@ const routes: RouteRecordRaw[] = [
         name: 'ChatCourse',
         component: () => import('@/views/rag/ChatView.vue'),
       },
+      {
+        path: 'chat/history/:pathMatch(.*)*',
+        redirect: '/chat',
+      },
+      {
+        path: 'tutor/history/:pathMatch(.*)*',
+        redirect: '/chat',
+      },
     ],
   },
   {

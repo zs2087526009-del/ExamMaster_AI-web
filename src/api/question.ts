@@ -14,7 +14,7 @@ export function getById(id: number): Promise<QuestionResponse> {
 }
 
 export function generate(data: GenerateQuestionRequest): Promise<GenerateQuestionResponse> {
-  return api.post('/questions/generate', data).then((res) => res.data)
+  return api.post('/questions/generate', data, { timeout: 600_000 }).then((res) => res.data)
 }
 
 export function deleteOne(id: number): Promise<string> {

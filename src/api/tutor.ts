@@ -3,9 +3,12 @@ import type { AxiosError } from 'axios'
 import type {
   TutorAnswerRequest,
   TutorAnswerResponse,
+  TutorChatRequest,
   TutorSessionDetailResponse,
+  TutorSessionHistoryItem,
   TutorSessionResponse,
   TutorStartSessionRequest,
+  PageResult,
 } from '@/types'
 
 export function startSession(data: TutorStartSessionRequest): Promise<TutorSessionResponse> {
@@ -64,6 +67,41 @@ export function submitAnswerStream(
   })
 }
 
+/** 辅导中自由提问（SSE 流式） */
+export function chatInSessionStream(
+  sessionId: string,
+  data: TutorChatRequest,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token')
+  return fetch(`/api/tutor/sessions/${sessionId}/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(data),
+    signal,
+  })
+}
+
 export function endSession(sessionId: string): Promise<{ message: string }> {
   return api.post(`/tutor/sessions/${sessionId}/end`, {}, { silent: true }).then((res) => res.data)
+}
+
+export function listHistory(params: {
+  courseId: number
+  page?: number
+  size?: number
+}): Promise<PageResult<TutorSessionHistoryItem>> {
+  return api.get('/tutor/sessions/history', { params }).then((res) => res.data)
+}
+
+export function getSessionHistory(sessionId: string): Promise<TutorSessionDetailResponse> {
+  return api.get(`/tutor/sessions/history/${sessionId}`).then((res) => res.data)
+}
+
+export function deleteSessionHistory(sessionId: string): Promise<void> {
+  return api.delete(`/tutor/sessions/history/${sessionId}`).then(() => undefined)
 }

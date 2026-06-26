@@ -8,6 +8,7 @@ import * as questionApi from '@/api/question'
 import type {
   KnowledgeTreeResponse, KnowledgePointResponse,
   WrongQuestionResponse, PageResult, QuestionResponse, QuestionType,
+  WrongQuestionExportFormat,
 } from '@/types'
 import LoadingBlock from '@/components/common/LoadingBlock.vue'
 import EmptyBlock from '@/components/common/EmptyBlock.vue'
@@ -124,6 +125,29 @@ function getKpName(kpId: number): string {
   return kp ? `${kp.chapter} › ${kp.name}` : `知识点 #${kpId}`
 }
 
+const exporting = ref(false)
+
+async function handleExport(format: WrongQuestionExportFormat) {
+  if (!selectedCourseId.value) return
+  exporting.value = true
+  try {
+    const { blob, filename } = await wqApi.exportWrongQuestions({
+      courseId: selectedCourseId.value,
+      knowledgePointId: selectedKpId.value,
+      questionType: selectedType.value || undefined,
+      format,
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success(format === 'pdf' ? '错题已导出为 PDF' : '错题已导出为 Word')
+  } catch { /* */ }
+  finally { exporting.value = false }
+}
+
 async function handleDelete(wq: WrongQuestionResponse) {
   try {
     await ElMessageBox.confirm('确定要移出错题本吗？', '删除确认', {
@@ -209,15 +233,32 @@ watch(() => route.query.courseId, (val) => {
         <h1>错题本</h1>
         <p class="sub">回顾错题，查漏补缺。低于 60 分的题目自动收录</p>
       </div>
-      <el-button
-        type="primary"
-        size="large"
-        :disabled="!selectedCourseId"
-        @click="handlePractice"
-      >
-        <AppIcon name="quill" :size="16" class="btn-icon" />
-        错题练习
-      </el-button>
+      <div class="header-actions">
+        <el-dropdown :disabled="!selectedCourseId" @command="handleExport">
+          <el-button
+            size="large"
+            :disabled="!selectedCourseId"
+            :loading="exporting"
+          >
+            导出错题 ▾
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="docx">导出 Word (.docx)</el-dropdown-item>
+              <el-dropdown-item command="pdf">导出 PDF</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-button
+          type="primary"
+          size="large"
+          :disabled="!selectedCourseId"
+          @click="handlePractice"
+        >
+          <AppIcon name="quill" :size="16" class="btn-icon" />
+          错题练习
+        </el-button>
+      </div>
     </div>
 
     <!-- Filters -->
@@ -408,6 +449,12 @@ watch(() => route.query.courseId, (val) => {
   margin-bottom: 20px;
   h1 { font-family: $font-display; font-size: 22px; font-weight: 700; color: $ink; margin-bottom: 4px; letter-spacing: 1px; }
   .sub { font-size: 13px; color: $ink-muted; }
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .filter-bar {

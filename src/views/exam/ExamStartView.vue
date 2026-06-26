@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as examApi from '@/api/exam'
 import * as kpApi from '@/api/knowledgePoint'
+import * as questionApi from '@/api/question'
 import type {
   KnowledgeTreeResponse, KnowledgePointResponse,
   ExamQuestionItem, AnswerItem, ExamSessionResponse,
@@ -22,8 +23,12 @@ const { courses, selectedCourseId, ensureCourses } = useCourseScope()
 const stage = ref<'setup' | 'exam'>('setup')
 const loadError = ref(false)
 const kpTree = ref<KnowledgeTreeResponse | null>(null)
+const kpIdsWithQuestions = ref<Set<number>>(new Set())
 const allKps = computed<KnowledgePointResponse[]>(() =>
   kpTree.value ? kpTree.value.chapters.flatMap((ch) => ch.knowledgePoints) : [],
+)
+const examKps = computed<KnowledgePointResponse[]>(() =>
+  allKps.value.filter((kp) => kpIdsWithQuestions.value.has(kp.id)),
 )
 const selectedKpIds = ref<number[]>([])
 const starting = ref(false)
@@ -63,11 +68,22 @@ function applySessionUpdate(session: ExamSessionResponse) {
 }
 
 async function fetchKpTree() {
-  if (!selectedCourseId.value) { kpTree.value = null; return }
+  if (!selectedCourseId.value) {
+    kpTree.value = null
+    kpIdsWithQuestions.value = new Set()
+    return
+  }
   try {
-    kpTree.value = await kpApi.getTree(selectedCourseId.value)
+    const [tree, questions] = await Promise.all([
+      kpApi.getTree(selectedCourseId.value),
+      questionApi.listByCourse(selectedCourseId.value),
+    ])
+    kpTree.value = tree
+    kpIdsWithQuestions.value = new Set(questions.map((q) => q.knowledgePointId))
+    selectedKpIds.value = selectedKpIds.value.filter((id) => kpIdsWithQuestions.value.has(id))
   } catch {
     kpTree.value = null
+    kpIdsWithQuestions.value = new Set()
   }
 }
 
@@ -193,9 +209,13 @@ function typeLabel(t: string) {
 function parseChoiceContent(raw: string): { stem: string; options: Record<string, string> } {
   const parsed = parseQuestionContent(raw)
   return {
-    stem: parsed.stem,
+    stem: parsed.stem || raw,
     options: parsed.options ?? {},
   }
+}
+
+function questionStem(raw: string): string {
+  return parseQuestionContent(raw).stem || raw
 }
 
 function getKpName(kpId: number): string {
@@ -316,18 +336,18 @@ watch(selectedCourseId, (id, prev) => {
         <div class="setup-row">
           <label class="setup-label">
             知识点范围
-            <span class="opt">（可选，不选则全课程出题）</span>
+            <span class="opt">（可选，不选则全部有题知识点）</span>
           </label>
           <el-select
             v-model="selectedKpIds"
             multiple
-            placeholder="选择知识点（可多选，留空=全部）"
+            :placeholder="examKps.length ? '选择知识点（可多选，留空=全部有题）' : '该课程暂无有题目的知识点'"
             size="large"
             style="width: 560px"
-            :disabled="!selectedCourseId"
+            :disabled="!selectedCourseId || examKps.length === 0"
           >
             <el-option
-              v-for="kp in allKps"
+              v-for="kp in examKps"
               :key="kp.id"
               :label="`${kp.chapter} › ${kp.name}`"
               :value="kp.id"
@@ -484,7 +504,7 @@ watch(selectedCourseId, (id, prev) => {
 
             <!-- FILL_BLANK -->
             <template v-else-if="q.questionType === 'FILL_BLANK'">
-              <div class="q-stem">{{ q.content }}</div>
+              <div class="q-stem">{{ questionStem(q.content) }}</div>
               <el-input
                 v-model="answers[q.id]"
                 placeholder="请输入答案"
@@ -495,7 +515,7 @@ watch(selectedCourseId, (id, prev) => {
 
             <!-- SHORT_ANSWER -->
             <template v-else-if="q.questionType === 'SHORT_ANSWER'">
-              <div class="q-stem">{{ q.content }}</div>
+              <div class="q-stem">{{ questionStem(q.content) }}</div>
               <el-input
                 v-model="answers[q.id]"
                 type="textarea"

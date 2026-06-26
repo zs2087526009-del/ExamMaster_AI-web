@@ -79,7 +79,12 @@ function toggleAnswer(id: number) {
 const genVisible = ref(false)
 const genFormRef = ref<FormInstance>()
 const generating = ref(false)
-const genKnowledgePointIds = ref<number[]>([])
+const genProgress = ref(0)
+let genProgressTimer: ReturnType<typeof setInterval> | null = null
+
+const genForm = reactive({
+  knowledgePointIds: [] as number[],
+})
 
 const genConfig = reactive<QuestionConfig>({
   choiceCount: 5,
@@ -94,25 +99,58 @@ const genRules: FormRules = {
   ],
 }
 
-function openGenerate() {
+function startGenProgress() {
+  stopGenProgress()
+  genProgress.value = 0
+  genProgressTimer = setInterval(() => {
+    genProgress.value = Math.min(genProgress.value + 1, 92)
+  }, 2500)
+}
+
+function stopGenProgress() {
+  if (genProgressTimer) {
+    clearInterval(genProgressTimer)
+    genProgressTimer = null
+  }
+}
+
+async function openGenerate() {
   if (!selectedCourseId.value) {
     ElMessage.warning('请先选择课程')
     return
   }
-  genKnowledgePointIds.value = []
+  if (!kpTree.value) {
+    await fetchKpTree()
+  }
+  if (allKps.value.length === 0) {
+    ElMessage.warning('该课程暂无知识点，请先上传文档提取知识点')
+    return
+  }
+  genForm.knowledgePointIds = selectedKpId.value ? [selectedKpId.value] : []
+  genProgress.value = 0
   genVisible.value = true
 }
 
 async function handleGenerate() {
-  if (!genKnowledgePointIds.value.length) {
-    ElMessage.warning('请至少选择一个知识点')
+  const valid = await genFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+
+  const totalCount =
+    (genConfig.choiceCount || 0) +
+    (genConfig.fillBlankCount || 0) +
+    (genConfig.trueFalseCount || 0) +
+    (genConfig.shortAnswerCount || 0)
+  if (totalCount < 1) {
+    ElMessage.warning('题目总数至少为 1 题')
     return
   }
+
   generating.value = true
+  startGenProgress()
   try {
     const res = await questionApi.generate({
       courseId: selectedCourseId.value!,
-      knowledgePointIds: genKnowledgePointIds.value,
+      knowledgePointIds: genForm.knowledgePointIds,
       config: {
         choiceCount: genConfig.choiceCount || 0,
         fillBlankCount: genConfig.fillBlankCount || 0,
@@ -120,6 +158,7 @@ async function handleGenerate() {
         shortAnswerCount: genConfig.shortAnswerCount || 0,
       },
     })
+    genProgress.value = 100
     ElMessage.success(
       `生成完成：成功 ${res.generatedCount} 题` +
       (res.failedCount ? `，失败 ${res.failedCount} 题` : ''),
@@ -127,7 +166,10 @@ async function handleGenerate() {
     genVisible.value = false
     await fetchQuestions()
   } catch { /* interceptor handles */ }
-  finally { generating.value = false }
+  finally {
+    stopGenProgress()
+    generating.value = false
+  }
 }
 
 // --- delete ---
@@ -373,15 +415,18 @@ onMounted(async () => {
       title="AI 生成题目"
       width="520px"
       :close-on-click-modal="false"
+      :close-on-press-escape="!generating"
+      :show-close="!generating"
       destroy-on-close
     >
-      <el-form ref="genFormRef" :rules="genRules" label-position="top">
+      <el-form ref="genFormRef" :model="genForm" :rules="genRules" label-position="top">
         <el-form-item label="选择知识点" prop="knowledgePointIds">
           <el-select
-            v-model="genKnowledgePointIds"
+            v-model="genForm.knowledgePointIds"
             multiple
             placeholder="请选择知识点（可多选）"
             style="width:100%"
+            :disabled="generating"
           >
             <el-option
               v-for="kp in allKps"
@@ -413,10 +458,21 @@ onMounted(async () => {
           </div>
           <p class="config-hint">设为 0 则跳过该类型，总数至少 1 题</p>
         </el-form-item>
+
+        <div v-if="generating" class="gen-progress">
+          <el-progress
+            :percentage="genProgress"
+            :stroke-width="10"
+            striped
+            striped-flow
+            :duration="12"
+          />
+          <p class="gen-progress-text">正在调用 AI 生成题目，请耐心等待…</p>
+        </div>
       </el-form>
 
       <template #footer>
-        <el-button @click="genVisible = false">取消</el-button>
+        <el-button :disabled="generating" @click="genVisible = false">取消</el-button>
         <el-button type="primary" :loading="generating" @click="handleGenerate">
           开始生成
         </el-button>
@@ -550,4 +606,17 @@ onMounted(async () => {
 }
 .config-label { font-size: 13px; color: $ink-light; }
 .config-hint { font-size: 11px; color: $ink-muted; margin-top: 8px; }
+
+.gen-progress {
+  margin-top: 8px;
+  padding: 14px 16px;
+  background: $paper-dark;
+  border-radius: $radius-md;
+}
+.gen-progress-text {
+  margin-top: 10px;
+  font-size: 13px;
+  color: $ink-muted;
+  text-align: center;
+}
 </style>

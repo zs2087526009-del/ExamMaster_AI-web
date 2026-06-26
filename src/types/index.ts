@@ -1,5 +1,6 @@
 // ==================== Enums ====================
 export type QuestionType = 'CHOICE' | 'FILL_BLANK' | 'TRUE_FALSE' | 'SHORT_ANSWER'
+export type WrongQuestionExportFormat = 'pdf' | 'docx'
 export type Difficulty = 'EASY' | 'MEDIUM' | 'HARD'
 export type ParseStatus = 'PENDING' | 'PARSING' | 'EXTRACTING' | 'SUCCESS' | 'FAILED'
 
@@ -121,6 +122,10 @@ export interface KnowledgeTreeResponse {
 export interface KnowledgeMasteryResponse {
   knowledgePointId: number
   masteryScore: number
+  repetitionCount?: number
+  intervalDays?: number
+  nextReviewDate?: string | null
+  dueForReview?: boolean
 }
 
 // ==================== Question ====================
@@ -310,6 +315,7 @@ export interface StudyPlanResponse {
 // ==================== RAG / Chat ====================
 export interface ChatRequest {
   courseId: number
+  conversationId?: number | null
   question: string
 }
 
@@ -326,13 +332,20 @@ export interface ChatHistoryResponse {
   messages: ChatMessageVO[]
 }
 
+export interface RagConversationSummary {
+  conversationId: number
+  title: string
+  updateTime: string
+  messageCount: number
+}
+
 export interface ReferenceVO {
   title: string
   content: string
 }
 
 export interface SseEvent {
-  type: 'content' | 'references' | 'status' | 'tool_call' | 'course_changed' | 'error'
+  type: 'content' | 'references' | 'status' | 'tool_call' | 'course_changed' | 'conversation' | 'error'
   content: string | null
   references: ReferenceVO[] | null
 }
@@ -391,8 +404,33 @@ export interface TutorSessionDetailResponse {
   turns: TutorTurnView[]
 }
 
+export interface TutorSessionHistoryItem {
+  sessionId: string
+  courseId: number
+  status: string
+  totalRounds: number
+  maxRounds: number
+  avgScore: number | null
+  memorySummary: string | null
+  createTime: string
+  endedTime: string | null
+}
+
 export interface TutorAnswerRequest {
   answer: string
+}
+
+export interface TutorChatRequest {
+  message: string
+}
+
+export interface TutorSessionSummary {
+  totalRounds: number
+  avgScore: number
+  strongPoints: string[]
+  weakPoints: string[]
+  encouragement: string
+  suggestedActions: string[]
 }
 
 export interface TutorAnswerResponse {
@@ -406,10 +444,11 @@ export interface TutorAnswerResponse {
   totalRounds: number
   question: TutorQuestionView | null
   closingComment: string | null
+  sessionSummary: TutorSessionSummary | null
 }
 
 export interface TutorAnswerStreamEvent {
-  type: 'status' | 'score' | 'comment' | 'feedback' | 'mastery' | 'next' | 'question' | 'closing' | 'done' | 'error'
+  type: 'status' | 'score' | 'comment' | 'feedback' | 'mastery' | 'next' | 'question' | 'closing' | 'summary' | 'done' | 'error'
   content?: string | null
   score?: number | null
   feedback?: TutorFeedbackView | null
@@ -419,4 +458,5 @@ export interface TutorAnswerStreamEvent {
   totalRounds?: number | null
   question?: TutorQuestionView | null
   currentKnowledgePoint?: TutorKnowledgePointView | null
+  sessionSummary?: TutorSessionSummary | null
 }
