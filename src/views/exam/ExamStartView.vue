@@ -74,12 +74,12 @@ async function fetchKpTree() {
     return
   }
   try {
-    const [tree, questions] = await Promise.all([
+    const [tree, kpIds] = await Promise.all([
       kpApi.getTree(selectedCourseId.value),
-      questionApi.listByCourse(selectedCourseId.value),
+      questionApi.listKnowledgePointIds(selectedCourseId.value),
     ])
     kpTree.value = tree
-    kpIdsWithQuestions.value = new Set(questions.map((q) => q.knowledgePointId))
+    kpIdsWithQuestions.value = new Set(kpIds)
     selectedKpIds.value = selectedKpIds.value.filter((id) => kpIdsWithQuestions.value.has(id))
   } catch {
     kpTree.value = null

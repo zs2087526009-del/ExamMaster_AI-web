@@ -128,12 +128,12 @@ export function useOnboardingLoader() {
       let qCount = 0
 
       if (focusId) {
-        const [docs, questions] = await Promise.all([
+        const [docs, questionPage] = await Promise.all([
           docApi.list(focusId).catch(() => [] as DocumentResponse[]),
-          questionApi.listByCourse(focusId).catch(() => []),
+          questionApi.list({ courseId: focusId, page: 1, size: 1 }).catch(() => ({ total: 0 })),
         ])
         documents = docs
-        qCount = questions.length
+        qCount = questionPage.total ?? 0
       }
 
       questionCount.value = qCount

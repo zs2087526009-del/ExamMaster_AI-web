@@ -6,7 +6,7 @@ import * as questionApi from '@/api/question'
 import * as kpApi from '@/api/knowledgePoint'
 import type {
   QuestionResponse, KnowledgePointResponse,
-  KnowledgeTreeResponse, QuestionConfig,
+  KnowledgeTreeResponse, QuestionConfig, PageResult,
 } from '@/types'
 import LoadingBlock from '@/components/common/LoadingBlock.vue'
 import EmptyBlock from '@/components/common/EmptyBlock.vue'
@@ -26,7 +26,9 @@ const allKps = computed<KnowledgePointResponse[]>(() => {
 const selectedKpId = ref<number | null>(null)
 
 // --- question list ---
-const questions = ref<QuestionResponse[]>([])
+const page = ref(1)
+const pageSize = 20
+const pageResult = ref<PageResult<QuestionResponse> | null>(null)
 const loading = ref(false)
 const expandedAnswer = ref<Record<number, boolean>>({})
 
@@ -38,36 +40,44 @@ async function fetchKpTree() {
 }
 
 async function fetchQuestions() {
-  if (!selectedCourseId.value) { questions.value = []; return }
+  if (!selectedCourseId.value) { pageResult.value = null; return }
   loading.value = true
   loadError.value = false
   try {
-    if (selectedKpId.value) {
-      questions.value = sortByType(await questionApi.listByKnowledgePoint(selectedKpId.value))
-    } else {
-      if (!kpTree.value) {
-        await fetchKpTree()
-      }
-      questions.value = sortByType(await questionApi.listByCourse(selectedCourseId.value))
+    if (!selectedKpId.value && !kpTree.value) {
+      await fetchKpTree()
     }
+    pageResult.value = await questionApi.list({
+      courseId: selectedCourseId.value,
+      knowledgePointId: selectedKpId.value ?? undefined,
+      page: page.value,
+      size: pageSize,
+    })
   } catch {
-    questions.value = []
+    pageResult.value = null
     loadError.value = true
   } finally { loading.value = false }
 }
 
-const canBatchDelete = computed(() => !!selectedKpId.value && questions.value.length > 0)
+const canBatchDelete = computed(() => !!selectedKpId.value && (pageResult.value?.total ?? 0) > 0)
 
 async function onCourseChange() {
   selectedKpId.value = null
   kpTree.value = null
-  questions.value = []
+  pageResult.value = null
+  page.value = 1
   await fetchKpTree()
   fetchQuestions()
 }
 
 function onKpChange() {
   expandedAnswer.value = {}
+  page.value = 1
+  fetchQuestions()
+}
+
+function onPageChange(p: number) {
+  page.value = p
   fetchQuestions()
 }
 
@@ -193,7 +203,7 @@ async function handleBatchDelete() {
   }
   try {
     await ElMessageBox.confirm(
-      `确定要删除当前知识点下的全部 ${questions.value.length} 道题目吗？`,
+      `确定要删除当前知识点下的全部 ${pageResult.value?.total ?? 0} 道题目吗？`,
       '批量删除',
       { type: 'warning', confirmButtonText: '全部删除', cancelButtonText: '取消' },
     )
@@ -235,14 +245,6 @@ function diffLabel(d: string): string {
 function diffColor(d: string): string {
   const map: Record<string, string> = { EASY: '#5b8c5a', MEDIUM: '#d4933e', HARD: '#c44536' }
   return map[d] || '#999'
-}
-
-const typeOrder: Record<string, number> = {
-  CHOICE: 1, FILL_BLANK: 2, TRUE_FALSE: 3, SHORT_ANSWER: 4,
-}
-
-function sortByType<T extends { questionType: string }>(list: T[]): T[] {
-  return [...list].sort((a, b) => (typeOrder[a.questionType] || 99) - (typeOrder[b.questionType] || 99))
 }
 
 function formatDate(s: string): string {
@@ -346,7 +348,7 @@ onMounted(async () => {
     </EmptyBlock>
 
     <EmptyBlock
-      v-else-if="questions.length === 0"
+      v-else-if="!pageResult || pageResult.records.length === 0"
       icon="inbox"
       title="该知识点暂无题目"
       description="点击「AI 生成题目」自动出题"
@@ -357,7 +359,7 @@ onMounted(async () => {
     <!-- Question List -->
     <div v-else class="question-list">
       <div
-        v-for="q in questions"
+        v-for="q in pageResult.records"
         :key="q.id"
         class="q-card"
       >
@@ -406,6 +408,16 @@ onMounted(async () => {
           <span class="answer-label">答案：</span>
           {{ formatChoiceAnswer(q.answer, q.questionType, parseQuestionContent(q.content).options) }}
         </div>
+      </div>
+
+      <div v-if="pageResult.pages > 1" class="pagination-wrap">
+        <el-pagination
+          layout="prev, pager, next"
+          :total="pageResult.total"
+          :page-size="pageSize"
+          :current-page="page"
+          @current-change="onPageChange"
+        />
       </div>
     </div>
 
@@ -575,6 +587,12 @@ onMounted(async () => {
 .q-bottom {
   display: flex;
   gap: 8px;
+  margin-top: 8px;
+}
+
+.pagination-wrap {
+  display: flex;
+  justify-content: center;
   margin-top: 8px;
 }
 

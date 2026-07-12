@@ -22,6 +22,7 @@ const coursesLoading = ref(true)
 // --- tree (has courseId) ---
 const tree = ref<KnowledgeTreeResponse | null>(null)
 const treeLoading = ref(false)
+const treeDocumentId = ref<number | null>(null)
 const expandedChapters = ref<Record<string, boolean>>({})
 const selectedPoint = ref<KnowledgePointResponse | null>(null)
 const detailVisible = ref(false)
@@ -102,7 +103,8 @@ async function handleUpload() {
 
     if (res.status === 'SUCCESS') {
       ElMessage.success('文档上传并解析完成')
-      await Promise.all([fetchTree(), fetchDocuments()])
+      treeDocumentId.value = res.documentId
+      await loadCourseData()
     } else {
       parsingDocumentId.value = res.documentId
       parsingFileName.value = res.fileName
@@ -152,10 +154,11 @@ function startParsingPoll() {
         stopParsingPoll()
         parsingProgress.value = 100
         parsingStatus.value = failedDoc ? '解析失败' : '解析完成！'
-        await Promise.all([
-          fetchTree({ silent: true }),
-          fetchDocuments({ silent: true }),
-        ])
+        if (!failedDoc && parsingDocumentId.value) {
+          treeDocumentId.value = parsingDocumentId.value
+        }
+        await fetchDocuments({ silent: true })
+        await fetchTree({ silent: true })
         setTimeout(() => {
           parsingVisible.value = false
           if (failedDoc) {
@@ -171,6 +174,7 @@ function startParsingPoll() {
         stopParsingPoll()
         parsingVisible.value = false
         isParsingActive.value = hasParsingDocuments()
+        await fetchDocuments({ silent: true })
         await fetchTree({ silent: true })
         ElMessage.warning('解析时间较长，系统将继续在后台检测，请稍后刷新查看')
         resumeParsingPollIfNeeded()
@@ -207,12 +211,35 @@ async function fetchDocuments(options?: { silent?: boolean }) {
   if (!silent) documentsLoading.value = true
   try {
     documents.value = await docApi.list(courseId.value)
+    syncTreeDocumentSelection()
     syncParsingUi()
   } catch {
     if (!silent) documents.value = []
+    treeDocumentId.value = null
   } finally {
     if (!silent) documentsLoading.value = false
   }
+}
+
+function pickDefaultTreeDocument(): number | null {
+  const parsed = documents.value.find((d) => d.parseStatus === 'SUCCESS')
+  return parsed?.id ?? documents.value[0]?.id ?? null
+}
+
+function syncTreeDocumentSelection() {
+  if (documents.value.length === 0) {
+    treeDocumentId.value = null
+    return
+  }
+  if (treeDocumentId.value && documents.value.some((d) => d.id === treeDocumentId.value)) {
+    return
+  }
+  treeDocumentId.value = pickDefaultTreeDocument()
+}
+
+function onTreeDocumentChange() {
+  expandedChapters.value = {}
+  fetchTree()
 }
 
 async function openDocDetail(doc: DocumentResponse) {
@@ -248,7 +275,7 @@ async function handleDeleteDoc(doc: DocumentResponse) {
       parsingVisible.value = false
     }
     ElMessage.success('文档已删除')
-    await Promise.all([fetchTree(), fetchDocuments()])
+    await loadCourseData()
   } catch { /* handled by interceptor */ }
 }
 
@@ -342,8 +369,9 @@ async function fetchTree(options?: { silent?: boolean }) {
   const silent = options?.silent ?? false
   if (!silent) treeLoading.value = true
   try {
+    const docId = documents.value.length > 0 ? treeDocumentId.value ?? undefined : undefined
     const [t, masteryList] = await Promise.all([
-      kpApi.getTree(courseId.value),
+      kpApi.getTree(courseId.value, docId),
       masteryApi.listByCourse(courseId.value).catch(() => []),
     ])
     tree.value = t
@@ -358,6 +386,11 @@ async function fetchTree(options?: { silent?: boolean }) {
   } finally {
     if (!silent) treeLoading.value = false
   }
+}
+
+async function loadCourseData() {
+  await fetchDocuments()
+  await fetchTree()
 }
 
 function selectCourse(c: CourseResponse) {
@@ -415,7 +448,7 @@ onMounted(async () => {
   await fetchCourses()
   syncCourseFromRoute()
   if (courseId.value) {
-    await Promise.all([fetchTree(), fetchDocuments()])
+    await loadCourseData()
     resumeParsingPollIfNeeded()
   }
 })
@@ -427,8 +460,9 @@ watch(() => route.params.courseId, (newId) => {
     courseStore.setCourseId(courseId.value)
     tree.value = null
     documents.value = []
+    treeDocumentId.value = null
     expandedChapters.value = {}
-    Promise.all([fetchTree(), fetchDocuments()]).then(() => resumeParsingPollIfNeeded())
+    loadCourseData().then(() => resumeParsingPollIfNeeded())
   }
 })
 </script>
@@ -563,12 +597,26 @@ watch(() => route.params.courseId, (newId) => {
 
       <div class="tree-section-header">
         <h2>知识点结构</h2>
+        <el-select
+          v-if="documents.length > 0"
+          v-model="treeDocumentId"
+          placeholder="选择课程文档"
+          class="doc-tree-select"
+          @change="onTreeDocumentChange"
+        >
+          <el-option
+            v-for="doc in documents"
+            :key="doc.id"
+            :label="doc.fileName"
+            :value="doc.id"
+          />
+        </el-select>
       </div>
 
       <LoadingBlock v-if="treeLoading" text="加载知识点..." />
 
       <EmptyBlock
-        v-else-if="!tree || tree.chapters.length === 0"
+        v-else-if="documents.length === 0"
         icon="tree"
         title="暂无知识点"
         description="请先上传教材文档，系统将自动解析知识点结构"
@@ -578,6 +626,13 @@ watch(() => route.params.courseId, (newId) => {
           上传文档
         </el-button>
       </EmptyBlock>
+
+      <EmptyBlock
+        v-else-if="!tree || tree.chapters.length === 0"
+        icon="tree"
+        title="暂无知识点"
+        description="该文档尚未解析完成，或暂未提取到知识点"
+      />
 
       <div v-else class="tree-list">
         <div
@@ -890,6 +945,11 @@ watch(() => route.params.courseId, (newId) => {
 .doc-count {
   font-size: 12px;
   color: #bbb;
+}
+
+.doc-tree-select {
+  width: 280px;
+  max-width: 100%;
 }
 
 .doc-list {

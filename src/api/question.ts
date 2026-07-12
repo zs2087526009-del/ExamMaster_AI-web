@@ -1,12 +1,17 @@
 import api from './index'
-import type { QuestionResponse, GenerateQuestionRequest, GenerateQuestionResponse } from '@/types'
+import type { QuestionResponse, GenerateQuestionRequest, GenerateQuestionResponse, PageResult } from '@/types'
 
-export function listByKnowledgePoint(knowledgePointId: number): Promise<QuestionResponse[]> {
-  return api.get('/questions', { params: { knowledgePointId } }).then((res) => res.data)
+export function list(params: {
+  courseId?: number
+  knowledgePointId?: number
+  page?: number
+  size?: number
+}): Promise<PageResult<QuestionResponse>> {
+  return api.get('/questions', { params }).then((res) => res.data)
 }
 
-export function listByCourse(courseId: number): Promise<QuestionResponse[]> {
-  return api.get('/questions', { params: { courseId } }).then((res) => res.data)
+export function listKnowledgePointIds(courseId: number): Promise<number[]> {
+  return api.get('/questions/knowledge-point-ids', { params: { courseId } }).then((res) => res.data)
 }
 
 export function getById(id: number): Promise<QuestionResponse> {

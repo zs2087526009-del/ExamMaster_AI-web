@@ -93,6 +93,7 @@ export interface DocumentResponse {
   fileType: string
   fileSize: number
   parseStatus: ParseStatus
+  fileUrl: string | null
   createTime: string
 }
 
