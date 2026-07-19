@@ -11,6 +11,10 @@ export function list(params: {
   return api.get('/wrong-questions', { params }).then((res) => res.data)
 }
 
+export function listKnowledgePointIds(courseId: number): Promise<number[]> {
+  return api.get('/wrong-questions/knowledge-point-ids', { params: { courseId } }).then((res) => res.data)
+}
+
 export function deleteOne(id: number): Promise<void> {
   return api.delete(`/wrong-questions/${id}`).then((res) => res.data)
 }

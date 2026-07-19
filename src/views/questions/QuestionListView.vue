@@ -4,14 +4,16 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import * as questionApi from '@/api/question'
 import * as kpApi from '@/api/knowledgePoint'
+import * as docApi from '@/api/document'
 import type {
-  QuestionResponse, KnowledgePointResponse,
+  QuestionResponse, KnowledgePointResponse, DocumentResponse,
   KnowledgeTreeResponse, QuestionConfig, PageResult,
 } from '@/types'
 import LoadingBlock from '@/components/common/LoadingBlock.vue'
 import EmptyBlock from '@/components/common/EmptyBlock.vue'
 import { AppIcon } from '@/components/icons'
 import { formatChoiceAnswer, parseQuestionContent } from '@/utils/questionContent'
+import { buildKpCascaderOptions, groupKpsByDocument } from '@/utils/kpCascader'
 import { useCourseScope } from '@/composables/useCourseScope'
 
 const { courses, selectedCourseId, ensureCourses } = useCourseScope()
@@ -19,11 +21,26 @@ const { courses, selectedCourseId, ensureCourses } = useCourseScope()
 // --- course & KP filter ---
 const loadError = ref(false)
 const kpTree = ref<KnowledgeTreeResponse | null>(null)
+const documents = ref<DocumentResponse[]>([])
+const kpIdsWithQuestions = ref<Set<number>>(new Set())
+/** Cascader path: [documentId, knowledgePointId] */
+const cascaderValue = ref<number[] | null>(null)
+const selectedKpId = computed(() => cascaderValue.value?.[1] ?? null)
+
 const allKps = computed<KnowledgePointResponse[]>(() => {
   if (!kpTree.value) return []
   return kpTree.value.chapters.flatMap((ch) => ch.knowledgePoints)
 })
-const selectedKpId = ref<number | null>(null)
+
+/** Generate dialog: all KPs, grouped by document. */
+const kpGroups = computed(() => groupKpsByDocument(allKps.value, documents.value))
+
+/** Filter cascader: document → KP, only KPs that already have questions. */
+const filterCascaderOptions = computed(() =>
+  buildKpCascaderOptions(allKps.value, documents.value, kpIdsWithQuestions.value),
+)
+
+const cascaderProps = { expandTrigger: 'click' as const }
 
 // --- question list ---
 const page = ref(1)
@@ -33,10 +50,29 @@ const loading = ref(false)
 const expandedAnswer = ref<Record<number, boolean>>({})
 
 async function fetchKpTree() {
-  if (!selectedCourseId.value) { kpTree.value = null; return }
+  if (!selectedCourseId.value) {
+    kpTree.value = null
+    documents.value = []
+    kpIdsWithQuestions.value = new Set()
+    return
+  }
   try {
-    kpTree.value = await kpApi.getTree(selectedCourseId.value)
-  } catch { kpTree.value = null }
+    const [tree, docs, kpIds] = await Promise.all([
+      kpApi.getTree(selectedCourseId.value),
+      docApi.list(selectedCourseId.value).catch(() => [] as DocumentResponse[]),
+      questionApi.listKnowledgePointIds(selectedCourseId.value).catch(() => [] as number[]),
+    ])
+    kpTree.value = tree
+    documents.value = docs
+    kpIdsWithQuestions.value = new Set(kpIds)
+    if (selectedKpId.value && !kpIdsWithQuestions.value.has(selectedKpId.value)) {
+      cascaderValue.value = null
+    }
+  } catch {
+    kpTree.value = null
+    documents.value = []
+    kpIdsWithQuestions.value = new Set()
+  }
 }
 
 async function fetchQuestions() {
@@ -44,7 +80,7 @@ async function fetchQuestions() {
   loading.value = true
   loadError.value = false
   try {
-    if (!selectedKpId.value && !kpTree.value) {
+    if (!kpTree.value) {
       await fetchKpTree()
     }
     pageResult.value = await questionApi.list({
@@ -62,15 +98,17 @@ async function fetchQuestions() {
 const canBatchDelete = computed(() => !!selectedKpId.value && (pageResult.value?.total ?? 0) > 0)
 
 async function onCourseChange() {
-  selectedKpId.value = null
+  cascaderValue.value = null
   kpTree.value = null
+  documents.value = []
+  kpIdsWithQuestions.value = new Set()
   pageResult.value = null
   page.value = 1
   await fetchKpTree()
   fetchQuestions()
 }
 
-function onKpChange() {
+function onCascaderChange() {
   expandedAnswer.value = {}
   page.value = 1
   fetchQuestions()
@@ -174,6 +212,7 @@ async function handleGenerate() {
       (res.failedCount ? `，失败 ${res.failedCount} 题` : ''),
     )
     genVisible.value = false
+    await fetchKpTree()
     await fetchQuestions()
   } catch { /* interceptor handles */ }
   finally {
@@ -192,7 +231,8 @@ async function handleDeleteOne(q: QuestionResponse) {
   try {
     await questionApi.deleteOne(q.id)
     ElMessage.success('已删除')
-    fetchQuestions()
+    await fetchKpTree()
+    await fetchQuestions()
   } catch { /* */ }
 }
 
@@ -211,7 +251,9 @@ async function handleBatchDelete() {
   try {
     await questionApi.batchDelete(selectedKpId.value)
     ElMessage.success('已全部删除')
-    fetchQuestions()
+    cascaderValue.value = null
+    await fetchKpTree()
+    await fetchQuestions()
   } catch { /* */ }
 }
 
@@ -283,21 +325,18 @@ onMounted(async () => {
           />
         </el-select>
 
-        <el-select
-          v-model="selectedKpId"
-          placeholder="知识点筛选（可选，不选=全部）"
+        <el-cascader
+          v-model="cascaderValue"
+          :options="filterCascaderOptions"
+          :props="cascaderProps"
           clearable
+          filterable
           size="large"
           class="filter-select filter-select-wide"
+          placeholder="课程资料 › 知识点（仅已有题目）"
           :disabled="!selectedCourseId"
-          @change="onKpChange"
-        >
-          <el-option
-            v-for="kp in allKps" :key="kp.id"
-            :label="`${kp.chapter} › ${kp.name}`"
-            :value="kp.id"
-          />
-        </el-select>
+          @change="onCascaderChange"
+        />
 
         <el-button
           type="primary"
@@ -436,16 +475,23 @@ onMounted(async () => {
           <el-select
             v-model="genForm.knowledgePointIds"
             multiple
+            filterable
             placeholder="请选择知识点（可多选）"
             style="width:100%"
             :disabled="generating"
           >
-            <el-option
-              v-for="kp in allKps"
-              :key="kp.id"
-              :label="`${kp.chapter} › ${kp.name}`"
-              :value="kp.id"
-            />
+            <el-option-group
+              v-for="group in kpGroups"
+              :key="group.documentId"
+              :label="group.label"
+            >
+              <el-option
+                v-for="kp in group.kps"
+                :key="kp.id"
+                :label="`${kp.chapter} › ${kp.name}`"
+                :value="kp.id"
+              />
+            </el-option-group>
           </el-select>
         </el-form-item>
 

@@ -5,8 +5,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import * as wqApi from '@/api/wrongQuestion'
 import * as kpApi from '@/api/knowledgePoint'
 import * as questionApi from '@/api/question'
+import * as docApi from '@/api/document'
 import type {
-  KnowledgeTreeResponse, KnowledgePointResponse,
+  KnowledgeTreeResponse, KnowledgePointResponse, DocumentResponse,
   WrongQuestionResponse, PageResult, QuestionResponse, QuestionType,
   WrongQuestionExportFormat,
 } from '@/types'
@@ -14,6 +15,7 @@ import LoadingBlock from '@/components/common/LoadingBlock.vue'
 import EmptyBlock from '@/components/common/EmptyBlock.vue'
 import { AppIcon } from '@/components/icons'
 import { formatChoiceAnswer, parseQuestionContent } from '@/utils/questionContent'
+import { buildKpCascaderOptions } from '@/utils/kpCascader'
 import { useCourseScope } from '@/composables/useCourseScope'
 
 const router = useRouter()
@@ -23,11 +25,20 @@ const { courses, selectedCourseId, courseStore, ensureCourses } = useCourseScope
 // filters
 const loadError = ref(false)
 const kpTree = ref<KnowledgeTreeResponse | null>(null)
+const documents = ref<DocumentResponse[]>([])
+const kpIdsWithWrong = ref<Set<number>>(new Set())
+/** Cascader path: [documentId, knowledgePointId] */
+const cascaderValue = ref<number[] | null>(null)
+const selectedKpId = computed(() => cascaderValue.value?.[1])
+const selectedType = ref<QuestionType | ''>('')
+
 const allKps = computed<KnowledgePointResponse[]>(() =>
   kpTree.value ? kpTree.value.chapters.flatMap((ch) => ch.knowledgePoints) : [],
 )
-const selectedKpId = ref<number | undefined>(undefined)
-const selectedType = ref<QuestionType | ''>('')
+const filterCascaderOptions = computed(() =>
+  buildKpCascaderOptions(allKps.value, documents.value, kpIdsWithWrong.value),
+)
+const cascaderProps = { expandTrigger: 'click' as const }
 
 const typeOptions: { label: string; value: QuestionType | '' }[] = [
   { label: '全部题型', value: '' },
@@ -46,8 +57,29 @@ const loadingQuestions = ref(false)
 const questionCache = ref<Record<number, QuestionResponse>>({})
 
 async function fetchKpTree() {
-  if (!selectedCourseId.value) { kpTree.value = null; return }
-  try { kpTree.value = await kpApi.getTree(selectedCourseId.value) } catch { kpTree.value = null }
+  if (!selectedCourseId.value) {
+    kpTree.value = null
+    documents.value = []
+    kpIdsWithWrong.value = new Set()
+    return
+  }
+  try {
+    const [tree, docs, kpIds] = await Promise.all([
+      kpApi.getTree(selectedCourseId.value),
+      docApi.list(selectedCourseId.value).catch(() => [] as DocumentResponse[]),
+      wqApi.listKnowledgePointIds(selectedCourseId.value).catch(() => [] as number[]),
+    ])
+    kpTree.value = tree
+    documents.value = docs
+    kpIdsWithWrong.value = new Set(kpIds)
+    if (selectedKpId.value && !kpIdsWithWrong.value.has(selectedKpId.value)) {
+      cascaderValue.value = null
+    }
+  } catch {
+    kpTree.value = null
+    documents.value = []
+    kpIdsWithWrong.value = new Set()
+  }
 }
 
 async function loadQuestionsForPage(records: WrongQuestionResponse[]) {
@@ -92,7 +124,7 @@ async function fetchList() {
 }
 
 async function onCourseChange() {
-  selectedKpId.value = undefined
+  cascaderValue.value = null
   selectedType.value = ''
   page.value = 1
   questionCache.value = {}
@@ -100,7 +132,7 @@ async function onCourseChange() {
   fetchList()
 }
 
-function onKpChange() {
+function onCascaderChange() {
   page.value = 1
   fetchList()
 }
@@ -157,7 +189,8 @@ async function handleDelete(wq: WrongQuestionResponse) {
   try {
     await wqApi.deleteOne(wq.id)
     ElMessage.success('已移出错题本')
-    fetchList()
+    await fetchKpTree()
+    await fetchList()
   } catch { /* */ }
 }
 
@@ -274,20 +307,18 @@ watch(() => route.query.courseId, (val) => {
         <el-option v-for="c in courses" :key="c.id" :label="c.courseName" :value="c.id" />
       </el-select>
 
-      <el-select
-        v-model="selectedKpId"
-        placeholder="知识点筛选（可选）"
+      <el-cascader
+        v-model="cascaderValue"
+        :options="filterCascaderOptions"
+        :props="cascaderProps"
+        clearable
+        filterable
         size="large"
         class="filter-select filter-select-wide"
-        clearable
+        placeholder="课程资料 › 知识点（仅有错题）"
         :disabled="!selectedCourseId"
-        @change="onKpChange"
-      >
-        <el-option
-          v-for="kp in allKps" :key="kp.id"
-          :label="`${kp.chapter} › ${kp.name}`" :value="kp.id"
-        />
-      </el-select>
+        @change="onCascaderChange"
+      />
 
       <el-select
         v-model="selectedType"

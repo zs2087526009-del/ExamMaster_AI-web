@@ -5,13 +5,15 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import * as examApi from '@/api/exam'
 import * as kpApi from '@/api/knowledgePoint'
 import * as questionApi from '@/api/question'
+import * as docApi from '@/api/document'
 import type {
-  KnowledgeTreeResponse, KnowledgePointResponse,
+  KnowledgeTreeResponse, KnowledgePointResponse, DocumentResponse,
   ExamQuestionItem, AnswerItem, ExamSessionResponse,
 } from '@/types'
 import { AppIcon } from '@/components/icons'
 import EmptyBlock from '@/components/common/EmptyBlock.vue'
 import { optionKeys, parseQuestionContent } from '@/utils/questionContent'
+import { buildKpCascaderOptions } from '@/utils/kpCascader'
 import { useGradingPoll } from '@/composables/useGradingPoll'
 import { useCourseScope } from '@/composables/useCourseScope'
 import { calcAccuracy } from '@/utils/accuracy'
@@ -23,13 +25,19 @@ const { courses, selectedCourseId, ensureCourses } = useCourseScope()
 const stage = ref<'setup' | 'exam'>('setup')
 const loadError = ref(false)
 const kpTree = ref<KnowledgeTreeResponse | null>(null)
+const documents = ref<DocumentResponse[]>([])
 const kpIdsWithQuestions = ref<Set<number>>(new Set())
 const allKps = computed<KnowledgePointResponse[]>(() =>
   kpTree.value ? kpTree.value.chapters.flatMap((ch) => ch.knowledgePoints) : [],
 )
-const examKps = computed<KnowledgePointResponse[]>(() =>
-  allKps.value.filter((kp) => kpIdsWithQuestions.value.has(kp.id)),
+const filterCascaderOptions = computed(() =>
+  buildKpCascaderOptions(allKps.value, documents.value, kpIdsWithQuestions.value),
 )
+const cascaderProps = {
+  multiple: true,
+  emitPath: false,
+  expandTrigger: 'click' as const,
+}
 const selectedKpIds = ref<number[]>([])
 const starting = ref(false)
 
@@ -70,19 +78,23 @@ function applySessionUpdate(session: ExamSessionResponse) {
 async function fetchKpTree() {
   if (!selectedCourseId.value) {
     kpTree.value = null
+    documents.value = []
     kpIdsWithQuestions.value = new Set()
     return
   }
   try {
-    const [tree, kpIds] = await Promise.all([
+    const [tree, docs, kpIds] = await Promise.all([
       kpApi.getTree(selectedCourseId.value),
+      docApi.list(selectedCourseId.value).catch(() => [] as DocumentResponse[]),
       questionApi.listKnowledgePointIds(selectedCourseId.value),
     ])
     kpTree.value = tree
+    documents.value = docs
     kpIdsWithQuestions.value = new Set(kpIds)
     selectedKpIds.value = selectedKpIds.value.filter((id) => kpIdsWithQuestions.value.has(id))
   } catch {
     kpTree.value = null
+    documents.value = []
     kpIdsWithQuestions.value = new Set()
   }
 }
@@ -338,21 +350,21 @@ watch(selectedCourseId, (id, prev) => {
             知识点范围
             <span class="opt">（可选，不选则全部有题知识点）</span>
           </label>
-          <el-select
+          <el-cascader
             v-model="selectedKpIds"
-            multiple
-            :placeholder="examKps.length ? '选择知识点（可多选，留空=全部有题）' : '该课程暂无有题目的知识点'"
+            :options="filterCascaderOptions"
+            :props="cascaderProps"
+            clearable
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
             size="large"
             style="width: 560px"
-            :disabled="!selectedCourseId || examKps.length === 0"
-          >
-            <el-option
-              v-for="kp in examKps"
-              :key="kp.id"
-              :label="`${kp.chapter} › ${kp.name}`"
-              :value="kp.id"
-            />
-          </el-select>
+            :placeholder="filterCascaderOptions.length
+              ? '课程资料 › 知识点（可多选，留空=全部有题）'
+              : '该课程暂无有题目的知识点'"
+            :disabled="!selectedCourseId || filterCascaderOptions.length === 0"
+          />
         </div>
 
         <el-button
